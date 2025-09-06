@@ -3,6 +3,7 @@
 import type React from "react"
 import { Inter, Work_Sans } from "next/font/google"
 import { Toaster } from "sonner"
+import Footer from "../components/Footer"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -22,8 +23,9 @@ export default function ClientLayout({
 }>) {
   return (
     <html lang="id" className={`${inter.variable} ${workSans.variable}`}>
-      <body className="font-sans antialiased">
-        {children}
+      <body className="font-sans antialiased min-h-screen flex flex-col">
+        <div className="flex-1">{children}</div>
+        <Footer />
         <Toaster
           position="top-right"
           richColors={false}

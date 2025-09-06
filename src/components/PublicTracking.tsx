@@ -22,13 +22,106 @@ export function PublicTracking() {
     setTimeout(() => {
       // Enhanced search algorithm - case insensitive and partial matching
       const normalizedSearch = noSurat.trim().toLowerCase()
-      const report = state.reports.find(
-        (r) => r.noSurat.toLowerCase().includes(normalizedSearch) || r.noSurat.toLowerCase() === normalizedSearch,
+      const foundReport = state.reports.find(
+        (report) =>
+          report.noSurat?.toLowerCase().includes(normalizedSearch) ||
+          report.hal?.toLowerCase().includes(normalizedSearch) ||
+          report.id?.toString().includes(noSurat),
       )
 
-      setSearchResult(report || false)
+      if (foundReport) {
+        const timeline = generateTrackingTimeline(foundReport)
+
+        setSearchResult({
+          ...foundReport,
+          timeline: timeline,
+          currentLocation: getCurrentLocation(foundReport),
+          estimatedCompletion: getEstimatedCompletion(foundReport),
+          lastUpdate: new Date().toLocaleString("id-ID"),
+        })
+      } else {
+        setSearchResult(false)
+      }
       setIsLoading(false)
     }, 800)
+  }
+
+  const generateTrackingTimeline = (report) => {
+    const timeline = [
+      {
+        step: "Surat Diterima",
+        status: "completed",
+        date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString("id-ID"),
+        location: "Tata Usaha",
+        description: "Surat masuk dan didaftarkan dalam sistem",
+      },
+      {
+        step: "Verifikasi Dokumen",
+        status: report.progress >= 25 ? "completed" : "in-progress",
+        date: report.progress >= 25 ? new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toLocaleDateString("id-ID") : null,
+        location: "Koordinator",
+        description: "Pemeriksaan kelengkapan dan validitas dokumen",
+      },
+      {
+        step: "Penugasan Staff",
+        status: report.progress >= 50 ? "completed" : report.progress >= 25 ? "in-progress" : "pending",
+        date: report.progress >= 50 ? new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleDateString("id-ID") : null,
+        location: "Staff Pelaksana",
+        description: "Surat ditugaskan kepada staff untuk diproses",
+        notes:
+          report.assignments && report.assignments.length > 0
+            ? report.assignments
+                .map((a) => a.notes)
+                .filter(Boolean)
+                .join("; ")
+            : null,
+      },
+      {
+        step: "Proses Pelayanan",
+        status: report.progress >= 75 ? "completed" : report.progress >= 50 ? "in-progress" : "pending",
+        date: report.progress >= 75 ? new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toLocaleDateString("id-ID") : null,
+        location: "Unit Pelayanan",
+        description: "Pelaksanaan layanan sesuai jenis permohonan",
+      },
+      {
+        step: "Selesai",
+        status: report.progress >= 100 ? "completed" : "pending",
+        date: report.progress >= 100 ? new Date().toLocaleDateString("id-ID") : null,
+        location: "Selesai",
+        description: "Surat telah selesai diproses dan siap diambil",
+      },
+    ]
+
+    return timeline
+  }
+
+  const getCurrentLocation = (report) => {
+    if (report.progress >= 100) return "Selesai - Siap Diambil"
+    if (report.progress >= 75) return "Unit Pelayanan"
+    if (report.progress >= 50) return "Staff Pelaksana"
+    if (report.progress >= 25) return "Koordinator"
+    return "Tata Usaha"
+  }
+
+  const getEstimatedCompletion = (report) => {
+    if (report.progress >= 100) return "Sudah Selesai"
+
+    const daysRemaining = Math.ceil((100 - report.progress) / 20)
+    const completionDate = new Date()
+    completionDate.setDate(completionDate.getDate() + daysRemaining)
+
+    return completionDate.toLocaleDateString("id-ID")
+  }
+
+  const getTimelineStatusColor = (status) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-500"
+      case "in-progress":
+        return "bg-blue-500"
+      default:
+        return "bg-gray-300"
+    }
   }
 
   const getStatusIcon = (status) => {
@@ -44,25 +137,13 @@ export function PublicTracking() {
     }
   }
 
-  const calculateProgress = (workflow) => {
-    if (!workflow || workflow.length === 0) return 0
-    const completedSteps = workflow.filter((step) => step.status === "completed").length
-    return Math.round((completedSteps / workflow.length) * 100)
+  const calculateProgress = (report) => {
+    return report?.progress || 0
   }
 
   const getCoordinatorNotesFromWorkflow = (step, report) => {
-    // Check if this is a staff assignment step
-    if (step.action && step.action.includes("Staff ditugaskan:")) {
-      // Extract staff name from the action
-      const staffNameMatch = step.action.match(/Staff ditugaskan: (.+)/)
-      if (staffNameMatch && staffNameMatch[1]) {
-        const staffName = staffNameMatch[1]
-        // Find the assignment for this staff member
-        const assignment = report.assignments?.find((a) => a.staffName === staffName)
-        if (assignment && assignment.notes) {
-          return assignment.notes
-        }
-      }
+    if (step.step === "Penugasan Staff" && step.notes) {
+      return step.notes
     }
     return null
   }
@@ -131,21 +212,19 @@ export function PublicTracking() {
 
           {searchResult && !isLoading && (
             <div className="space-y-6">
-              {/* Progress indicator */}
               <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-primary">Progress Penanganan</h3>
-                  <span className="text-sm font-medium text-primary">{calculateProgress(searchResult.workflow)}%</span>
+                  <span className="text-sm font-medium text-primary">{calculateProgress(searchResult)}%</span>
                 </div>
                 <div className="w-full bg-primary/10 rounded-full h-2">
                   <div
                     className="bg-primary h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${calculateProgress(searchResult.workflow)}%` }}
+                    style={{ width: `${calculateProgress(searchResult)}%` }}
                   ></div>
                 </div>
               </div>
 
-              {/* Letter information */}
               <div className="bg-card/50 p-6 rounded-lg border border-border/20">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <FileText className="w-5 h-5 text-primary" />
@@ -178,54 +257,39 @@ export function PublicTracking() {
                     <span className="font-medium text-foreground">Layanan:</span>
                     <span className="text-muted-foreground">{searchResult.layanan}</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">Lokasi Saat Ini:</span>
+                    <span className="text-muted-foreground">{searchResult.currentLocation}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">Estimasi Selesai:</span>
+                    <span className="text-muted-foreground">{searchResult.estimatedCompletion}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Timeline */}
               <div className="bg-card/50 p-6 rounded-lg border border-border/20">
                 <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary" />
                   Timeline Proses
                 </h3>
                 <div className="space-y-4">
-                  {searchResult.workflow.map((step, index) => {
+                  {searchResult.timeline.map((step, index) => {
                     const coordinatorNotes = getCoordinatorNotesFromWorkflow(step, searchResult)
 
                     return (
-                      <div key={step.id} className="flex items-start gap-4">
+                      <div key={index} className="flex items-start gap-4">
                         <div className="flex flex-col items-center">
-                          {getStatusIcon(step.status)}
-                          {index < searchResult.workflow.length - 1 && <div className="w-px h-8 bg-border mt-2" />}
+                          <div className={`w-4 h-4 rounded-full ${getTimelineStatusColor(step.status)}`} />
+                          {index < searchResult.timeline.length - 1 && <div className="w-0.5 h-8 bg-border mt-2" />}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-medium text-foreground">{step.action}</h4>
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                step.status === "completed"
-                                  ? "bg-green-100 text-green-700"
-                                  : step.status === "in-progress"
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {step.status === "completed"
-                                ? "Selesai"
-                                : step.status === "in-progress"
-                                  ? "Sedang Diproses"
-                                  : "Menunggu"}
-                            </span>
+                            <h4 className="font-medium text-foreground">{step.step}</h4>
+                            {step.status === "completed" && <CheckCircle className="w-4 h-4 text-green-500" />}
+                            {step.status === "in-progress" && <Clock className="w-4 h-4 text-blue-500" />}
                           </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
-                            <span className="flex items-center gap-1">
-                              <User className="w-4 h-4" />
-                              {step.user}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-4 h-4" />
-                              {new Date(step.timestamp).toLocaleString("id-ID")}
-                            </span>
-                          </div>
+                          <p className="text-sm text-muted-foreground mb-1">{step.description}</p>
                           {coordinatorNotes && (
                             <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                               <div className="flex items-start gap-2">
@@ -238,11 +302,27 @@ export function PublicTracking() {
                               </div>
                             </div>
                           )}
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                            {step.date && (
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                <span>{step.date}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              <span>{step.location}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )
                   })}
                 </div>
+              </div>
+
+              <div className="text-center text-xs text-muted-foreground">
+                Terakhir diperbarui: {searchResult.lastUpdate}
               </div>
             </div>
           )}

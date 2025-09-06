@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useApp } from "../context/AppContext"
 import { Shield, FileText, Eye, EyeOff, BarChart3, Workflow } from "lucide-react"
 
@@ -10,7 +10,15 @@ export function Login() {
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
   const { state, dispatch } = useApp()
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const handlePublicTracking = () => {
     window.dispatchEvent(new CustomEvent("showPublicTracking", { detail: true }))
@@ -28,7 +36,6 @@ export function Login() {
   }
 
   const getCurrentTime = () => {
-    const now = new Date()
     const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
     const months = [
       "Januari",
@@ -45,11 +52,11 @@ export function Login() {
       "Desember",
     ]
 
-    const dayName = days[now.getDay()]
-    const date = now.getDate()
-    const month = months[now.getMonth()]
-    const year = now.getFullYear()
-    const time = now.toLocaleTimeString("id-ID", { hour12: false })
+    const dayName = days[currentTime.getDay()]
+    const date = currentTime.getDate()
+    const month = months[currentTime.getMonth()]
+    const year = currentTime.getFullYear()
+    const time = currentTime.toLocaleTimeString("id-ID", { hour12: false })
 
     return `${dayName}, ${date} ${month} ${year}, ${time}`
   }
@@ -58,7 +65,9 @@ export function Login() {
     <div className="min-h-screen bg-gray-50 flex">
       <div className="flex-1 flex flex-col justify-center px-8 lg:px-16">
         <div className="max-w-lg">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4 leading-tight">PROSES ADMINISTRASI - BIRO SDMO KLH/BPLH</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4 leading-tight">
+            PROSES ADMINISTRASI - BIRO SDMO KLH/BPLH
+          </h1>
           <p className="text-lg text-gray-600 mb-8 leading-relaxed">Kementerian Lingkungan Hidup (SDM)</p>
 
           <div className="mb-8 p-4 bg-white rounded-lg border border-gray-200">
