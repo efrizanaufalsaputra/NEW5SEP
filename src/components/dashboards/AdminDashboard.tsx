@@ -17,6 +17,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     loadUsersFromDatabase()
+    setupRealtimeSubscription()
     const timer = setInterval(() => {
       setCurrentTime(new Date())
     }, 1000)
@@ -56,10 +57,9 @@ export function AdminDashboard() {
     try {
       setLoading(true)
 
-      const { data: profiles, error } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("DISTINCT ON (user_id) *")
-        .order("user_id", { ascending: true })
+        .select("id, name, role, created_at")
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -67,18 +67,48 @@ export function AdminDashboard() {
         return
       }
 
-      const mappedProfiles =
-        profiles?.map((profile) => ({
-          ...profile,
-          id: profile.user_id || profile.id,
-          supabase_id: profile.id,
-        })) || []
-
-      setSupabaseUsers(mappedProfiles)
+      // Filter unique data based on id
+      const unique = [...new Map(data.map((u) => [u.id, u])).values()]
+      setSupabaseUsers(unique)
     } catch (error) {
       console.error("Error loading users:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const setupRealtimeSubscription = () => {
+    const channel = supabase
+      .channel("profiles-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "profiles",
+        },
+        (payload) => {
+          console.log("[v0] Profiles realtime update:", payload)
+
+          setSupabaseUsers((prev) => {
+            const updated = new Map(prev.map((u) => [u.id, u]))
+
+            if (payload.eventType === "DELETE") {
+              updated.delete(payload.old.id)
+            } else {
+              // INSERT or UPDATE
+              updated.set(payload.new.id, payload.new)
+            }
+
+            return [...updated.values()]
+          })
+        },
+      )
+      .subscribe()
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel)
     }
   }
 
@@ -349,7 +379,26 @@ export function AdminDashboard() {
     dispatch({ type: "LOGOUT" })
   }
 
-  const allUsers = [...state.users, ...supabaseUsers.filter((su) => !state.users.find((u) => u.id === su.id))]
+  const allUsers = (() => {
+    const userMap = new Map()
+
+    // Add local state users first
+    state.users.forEach((user) => {
+      userMap.set(user.id, user)
+    })
+
+    // Add Supabase users, but don't overwrite existing ones
+    supabaseUsers.forEach((user) => {
+      if (!userMap.has(user.id)) {
+        userMap.set(user.id, {
+          ...user,
+          supabase_id: user.id,
+        })
+      }
+    })
+
+    return [...userMap.values()]
+  })()
 
   const stats = {
     totalUsers: allUsers.length,
@@ -542,8 +591,11 @@ export function AdminDashboard() {
 
       {loading && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4">
-            <p className="text-gray-600">Loading...</p>
+          <div className="bg-white rounded-lg p-6 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+              <p className="text-gray-900 font-medium">Loading...</p>
+            </div>
           </div>
         </div>
       )}
