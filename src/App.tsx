@@ -9,7 +9,7 @@ import { AdminDashboard } from "./components/dashboards/AdminDashboard"
 import { TUDashboard } from "./components/dashboards/TUDashboard"
 import { CoordinatorDashboard } from "./components/dashboards/CoordinatorDashboard"
 import { StaffDashboard } from "./components/dashboards/StaffDashboard"
-import { Home, Users, FileText, Clipboard, CheckSquare } from "lucide-react"
+import { Home, Users, FileText, Clipboard, CheckSquare, Wifi, WifiOff } from "lucide-react"
 
 function App() {
   const { state } = useApp()
@@ -86,6 +86,34 @@ function App() {
         userRole={state.currentUser?.role || "Role"}
         userTitle={state.currentUser?.role || "Title"}
       />
+
+      {state.isAuthenticated && (
+        <div className="fixed top-4 right-4 z-50">
+          <div
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              state.isConnected
+                ? "bg-green-100 text-green-800 border border-green-200"
+                : "bg-red-100 text-red-800 border border-red-200"
+            }`}
+          >
+            {state.isConnected ? (
+              <>
+                <Wifi className="w-4 h-4" />
+                <span>Realtime Connected</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-4 h-4" />
+                <span>Offline Mode</span>
+              </>
+            )}
+            {state.lastSyncTime && (
+              <span className="text-xs opacity-75">• {new Date(state.lastSyncTime).toLocaleTimeString()}</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <main className="max-w-7xl mx-auto py-4 px-4 sm:py-8 sm:px-6 lg:px-8">{getDashboardComponent()}</main>
     </div>
   )

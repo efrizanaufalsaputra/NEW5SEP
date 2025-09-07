@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useApp } from "../../context/AppContext"
 import { Plus, Edit, Trash2, Users, FileText, Clock, LogOut } from "lucide-react"
 import { UserForm } from "../forms/UserForm"
-import { createClient } from "../../../lib/supabase/client"
+import { supabase } from "../../../lib/supabaseClient"
 
 export function AdminDashboard() {
   const { state, dispatch } = useApp()
@@ -14,8 +14,6 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(false)
   const [supabaseUsers, setSupabaseUsers] = useState([])
   const [currentTime, setCurrentTime] = useState(new Date())
-
-  const supabase = createClient()
 
   useEffect(() => {
     loadUsersFromDatabase()
@@ -60,7 +58,8 @@ export function AdminDashboard() {
 
       const { data: profiles, error } = await supabase
         .from("profiles")
-        .select("*")
+        .select("DISTINCT ON (user_id) *")
+        .order("user_id", { ascending: true })
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -217,11 +216,10 @@ export function AdminDashboard() {
         const originalUserId = userData.id
         console.log("[v0] Original user ID:", originalUserId)
 
-        // Check if user already exists
         console.log("[v0] Checking if user already exists in profiles table")
         const { data: existingProfile, error: checkError } = await supabase
           .from("profiles")
-          .select("user_id")
+          .select("user_id, id")
           .eq("user_id", originalUserId)
           .single()
 
@@ -255,6 +253,7 @@ export function AdminDashboard() {
             data: {
               name: userData.name,
               role: userData.role,
+              user_id: originalUserId, // Pass user_id in metadata for trigger to use
             },
           },
         })
@@ -275,23 +274,52 @@ export function AdminDashboard() {
 
         if (authData.user) {
           console.log("[v0] Auth user created successfully:", authData.user.id)
-          console.log("[v0] Updating profile with user_id...")
 
-          const { error: profileError } = await supabase
+          console.log("[v0] Waiting for trigger to create profile...")
+
+          // Wait a moment for the trigger to execute
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          const { data: createdProfile, error: profileReadError } = await supabase
             .from("profiles")
-            .update({ user_id: originalUserId })
+            .select("*")
             .eq("id", authData.user.id)
+            .single()
 
-          console.log("[v0] Profile update result:", { profileError })
-
-          if (profileError) {
-            console.error("[v0] Error updating profile with user_id:", profileError)
-            console.log("[v0] Attempting to cleanup auth user due to profile error")
+          if (profileReadError) {
+            console.error("[v0] Error reading created profile:", profileReadError)
+            console.log("[v0] Attempting to cleanup auth user due to profile read error")
             await supabase.auth.admin.deleteUser(authData.user.id)
-            alert("Gagal menyimpan data profil pengguna. Silakan coba lagi.")
+            alert("Gagal membaca data profil pengguna yang dibuat. Silakan coba lagi.")
             return
           }
-          console.log("[v0] Successfully updated profile with user_id")
+
+          console.log("[v0] Successfully read created profile:", createdProfile)
+
+          if (!createdProfile) {
+            console.error("[v0] Profile was not created by trigger")
+            console.log("[v0] Attempting to cleanup auth user due to missing profile")
+            await supabase.auth.admin.deleteUser(authData.user.id)
+            alert("Gagal membuat profil pengguna. Trigger database mungkin tidak berfungsi. Silakan coba lagi.")
+            return
+          }
+
+          if (!createdProfile.user_id) {
+            console.log("[v0] Updating profile with user_id...")
+            const { error: profileUpdateError } = await supabase
+              .from("profiles")
+              .update({ user_id: originalUserId })
+              .eq("id", authData.user.id)
+
+            if (profileUpdateError) {
+              console.error("[v0] Error updating profile with user_id:", profileUpdateError)
+              console.log("[v0] Attempting to cleanup auth user due to profile update error")
+              await supabase.auth.admin.deleteUser(authData.user.id)
+              alert("Gagal menyimpan data profil pengguna. Silakan coba lagi.")
+              return
+            }
+            console.log("[v0] Successfully updated profile with user_id")
+          }
         } else {
           console.error("[v0] No user returned from auth signup")
           alert("Gagal membuat pengguna: Tidak ada data user yang dikembalikan")

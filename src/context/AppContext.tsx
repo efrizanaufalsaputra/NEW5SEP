@@ -3,13 +3,9 @@
 import type React from "react"
 import { createContext, useContext, useReducer, useMemo, useCallback, useEffect, type ReactNode } from "react"
 import type { User, Report, TaskAssignment, ReportStatus } from "../types"
-import {
-  subscribeToReports,
-  subscribeToTaskAssignments,
-  subscribeToWorkflowHistory,
-  type RealtimeSubscription,
-} from "../../lib/supabase/realtime"
+import { useRealtime } from "../../hooks/useRealtime"
 import { trackingToasts } from "../../lib/toast"
+import { supabase } from "../../lib/supabaseClient"
 
 interface AppState {
   currentUser: User | null
@@ -326,103 +322,122 @@ export { AppContext }
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, loadInitialState())
 
+  const realtimeCallbacks = useMemo(
+    () => ({
+      reports: {
+        onInsert: (payload) => {
+          dispatch({ type: "SYNC_REPORT_FROM_REALTIME", payload: payload.new })
+          trackingToasts.reportCreated()
+        },
+        onUpdate: (payload) => {
+          dispatch({ type: "SYNC_REPORT_FROM_REALTIME", payload: payload.new })
+          trackingToasts.workflowUpdated()
+        },
+        onDelete: (payload) => {
+          dispatch({ type: "DELETE_REPORT", payload: payload.old.id })
+        },
+      },
+      file_attachments: {
+        onInsert: (payload) => {
+          trackingToasts.fileUploaded()
+          dispatch({ type: "UPDATE_SYNC_TIME" })
+        },
+        onUpdate: (payload) => {
+          dispatch({ type: "UPDATE_SYNC_TIME" })
+        },
+        onDelete: (payload) => {
+          dispatch({ type: "UPDATE_SYNC_TIME" })
+        },
+      },
+      letter_tracking: {
+        onInsert: (payload) => {
+          trackingToasts.workflowUpdated()
+          dispatch({ type: "UPDATE_SYNC_TIME" })
+        },
+        onUpdate: (payload) => {
+          dispatch({ type: "UPDATE_SYNC_TIME" })
+        },
+      },
+      profiles: {
+        onInsert: (payload) => {
+          // Handle new user creation
+          dispatch({ type: "ADD_USER", payload: payload.new })
+        },
+        onUpdate: (payload) => {
+          // Handle user updates
+          dispatch({ type: "UPDATE_USER", payload: payload.new })
+        },
+        onDelete: (payload) => {
+          // Handle user deletion
+          dispatch({ type: "DELETE_USER", payload: payload.old.id })
+        },
+      },
+    }),
+    [],
+  )
+
+  const { isConnected, lastSync } = useRealtime(
+    state.isAuthenticated ? ["reports", "file_attachments", "letter_tracking", "profiles"] : [],
+    realtimeCallbacks,
+  )
+
+  useEffect(() => {
+    dispatch({ type: "SET_CONNECTION_STATUS", payload: isConnected })
+    if (lastSync) {
+      dispatch({ type: "UPDATE_SYNC_TIME" })
+    }
+  }, [isConnected, lastSync])
+
   useEffect(() => {
     if (!state.isAuthenticated) return
 
-    let subscriptions: RealtimeSubscription[] = []
-
-    const setupRealtimeSubscriptions = () => {
+    const loadInitialData = async () => {
       try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        const { data: reports, error: reportsError } = await supabase
+          .from("reports")
+          .select("*")
+          .order("created_at", { ascending: false })
 
-        if (!supabaseUrl || !supabaseAnonKey) {
-          console.warn("[v0] Supabase not configured. Realtime features disabled.")
-          dispatch({ type: "SET_CONNECTION_STATUS", payload: false })
-          return
+        if (reportsError) {
+          console.error("Error loading reports:", reportsError)
+        } else if (reports) {
+          reports.forEach((report) => {
+            dispatch({ type: "SYNC_REPORT_FROM_REALTIME", payload: report })
+          })
         }
 
-        const reportsSubscription = subscribeToReports(
-          (payload) => {
-            console.log("[v0] New report created:", payload)
-            dispatch({ type: "SYNC_REPORT_FROM_REALTIME", payload: payload.new })
-            trackingToasts.reportCreated()
-          },
-          (payload) => {
-            console.log("[v0] Report updated:", payload)
-            dispatch({ type: "SYNC_REPORT_FROM_REALTIME", payload: payload.new })
-            trackingToasts.workflowUpdated()
-          },
-          (payload) => {
-            console.log("[v0] Report deleted:", payload)
-            dispatch({ type: "DELETE_REPORT", payload: payload.old.id })
-          },
-        )
+        try {
+          // Only load profiles if current user is admin to avoid RLS policy recursion
+          if (state.currentUser?.role === "Admin") {
+            const { data: profiles, error: profilesError } = await supabase
+              .from("profiles")
+              .select("id, name, role, created_at")
+              .limit(50) // Limit results to prevent large queries
+              .order("created_at", { ascending: false })
 
-        const tasksSubscription = subscribeToTaskAssignments(
-          (payload) => {
-            console.log("[v0] New task assignment:", payload)
-            const assignment = payload.new
-            dispatch({
-              type: "SYNC_TASK_FROM_REALTIME",
-              payload: { reportId: assignment.report_id, assignment },
-            })
-            trackingToasts.taskAssigned(assignment.staff_name)
-          },
-          (payload) => {
-            console.log("[v0] Task assignment updated:", payload)
-            const assignment = payload.new
-            dispatch({
-              type: "SYNC_TASK_FROM_REALTIME",
-              payload: { reportId: assignment.report_id, assignment },
-            })
-
-            if (assignment.status === "completed") {
-              trackingToasts.taskCompleted()
-            } else if (assignment.status === "revision-requested") {
-              trackingToasts.revisionRequested()
+            if (profilesError) {
+              console.error("Error loading profiles:", profilesError)
+              // Don't throw error, just log it and continue
+            } else if (profiles) {
+              profiles.forEach((profile) => {
+                dispatch({ type: "ADD_USER", payload: profile })
+              })
             }
-          },
-          (payload) => {
-            console.log("[v0] Task assignment deleted:", payload)
-            // Handle task deletion if needed
-          },
-        )
+          }
+        } catch (profileError) {
+          console.error("Profiles query failed, continuing without sync:", profileError)
+          // Continue execution even if profiles fail to load
+        }
 
-        const workflowSubscription = subscribeToWorkflowHistory(
-          (payload) => {
-            console.log("[v0] New workflow entry:", payload)
-            trackingToasts.workflowUpdated()
-            dispatch({ type: "UPDATE_SYNC_TIME" })
-          },
-          (payload) => {
-            console.log("[v0] Workflow entry updated:", payload)
-            dispatch({ type: "UPDATE_SYNC_TIME" })
-          },
-        )
-
-        subscriptions = [reportsSubscription, tasksSubscription, workflowSubscription]
-        dispatch({ type: "SET_CONNECTION_STATUS", payload: true })
         trackingToasts.syncSuccess()
       } catch (error) {
-        console.error("[v0] Error setting up realtime subscriptions:", error)
-        dispatch({ type: "SET_CONNECTION_STATUS", payload: false })
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-        if (supabaseUrl && supabaseAnonKey) {
-          trackingToasts.connectionError()
-        }
+        console.error("Error loading initial data:", error)
+        trackingToasts.connectionError()
       }
     }
 
-    const timeoutId = setTimeout(setupRealtimeSubscriptions, 1000)
-
-    return () => {
-      clearTimeout(timeoutId)
-      subscriptions.forEach((subscription) => subscription.unsubscribe())
-      dispatch({ type: "SET_CONNECTION_STATUS", payload: false })
-    }
-  }, [state.isAuthenticated])
+    loadInitialData()
+  }, [state.isAuthenticated, state.currentUser?.role])
 
   const requestRevision = useCallback((reportId: string, staffName: string, revisionNotes: string) => {
     dispatch({

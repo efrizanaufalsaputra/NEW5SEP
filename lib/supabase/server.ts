@@ -1,40 +1,27 @@
 import { createServerClient as createSupabaseServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-function createMockClient() {
-  return {
-    from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
-      insert: () => Promise.resolve({ data: null, error: null }),
-      update: () => Promise.resolve({ data: null, error: null }),
-      delete: () => Promise.resolve({ data: null, error: null }),
-    }),
-    auth: {
-      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
-      signInWithPassword: () => Promise.resolve({ data: null, error: null }),
-      signUp: () => Promise.resolve({ data: null, error: null }),
-      signOut: () => Promise.resolve({ error: null }),
-    },
-    channel: () => ({
-      on: () => ({ subscribe: () => {} }),
-      unsubscribe: () => {},
-    }),
-  }
-}
-
 export function createClient() {
   const cookieStore = cookies()
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "https://tfpleowwysvuaijbxmsl.supabase.co"
 
-  console.log("[v0] Server - Supabase URL:", supabaseUrl ? "✓ Found" : "✗ Missing")
-  console.log("[v0] Server - Supabase Anon Key:", supabaseAnonKey ? "✓ Found" : "✗ Missing")
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcGxlb3d3eXN2dWFpamJ4bXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYyMjM1NjAsImV4cCI6MjA3MTc5OTU2MH0._42yCm4fr-1KS2Ud1-bYuYSrrPBEt0Uo4ekomI17dto"
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn("[v0] Server - Supabase environment variables not found. Using mock client.")
-    return createMockClient()
-  }
+  console.log("[v0] Server - Environment variables check:")
+  console.log("[v0] Server - NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "✓ Found" : "✗ Missing")
+  console.log("[v0] Server - SUPABASE_URL:", process.env.SUPABASE_URL ? "✓ Found" : "✗ Missing")
+  console.log(
+    "[v0] Server - NEXT_PUBLIC_SUPABASE_ANON_KEY:",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "✓ Found" : "✗ Missing",
+  )
+  console.log("[v0] Server - SUPABASE_ANON_KEY:", process.env.SUPABASE_ANON_KEY ? "✓ Found" : "✗ Missing")
+  console.log("[v0] Server - Final URL:", supabaseUrl ? "✓ Found" : "✗ Missing")
+  console.log("[v0] Server - Final Key:", supabaseAnonKey ? "✓ Found" : "✗ Missing")
 
   console.log("[v0] Creating real server Supabase client connection")
   return createSupabaseServerClient(supabaseUrl, supabaseAnonKey, {
@@ -56,14 +43,27 @@ export function createClient() {
 }
 
 export function createServerClient(cookieStore: any) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "https://tfpleowwysvuaijbxmsl.supabase.co"
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn("[v0] Supabase environment variables not found. Using mock client.")
-    return createMockClient()
-  }
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcGxlb3d3eXN2dWFpamJ4bXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYyMjM1NjAsImV4cCI6MjA3MTc5OTU2MH0._42yCm4fr-1KS2Ud1-bYuYSrrPBEt0Uo4ekomI17dto"
 
+  console.log("[v0] ServerClient - Environment variables check:")
+  console.log(
+    "[v0] ServerClient - NEXT_PUBLIC_SUPABASE_URL:",
+    process.env.NEXT_PUBLIC_SUPABASE_URL ? "✓ Found" : "✗ Missing",
+  )
+  console.log("[v0] ServerClient - SUPABASE_URL:", process.env.SUPABASE_URL ? "✓ Found" : "✗ Missing")
+  console.log(
+    "[v0] ServerClient - NEXT_PUBLIC_SUPABASE_ANON_KEY:",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "✓ Found" : "✗ Missing",
+  )
+  console.log("[v0] ServerClient - SUPABASE_ANON_KEY:", process.env.SUPABASE_ANON_KEY ? "✓ Found" : "✗ Missing")
+
+  console.log("[v0] Creating real server client with URL:", supabaseUrl.substring(0, 30) + "...")
   return createSupabaseServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -83,16 +83,23 @@ export function createServerClient(cookieStore: any) {
 }
 
 export function createServiceClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "https://tfpleowwysvuaijbxmsl.supabase.co"
 
-  console.log("[v0] Service - Supabase URL:", supabaseUrl ? "✓ Found" : "✗ Missing")
-  console.log("[v0] Service - Service Role Key:", serviceRoleKey ? "✓ Found" : "✗ Missing")
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcGxlb3d3eXN2dWFpamJ4bXNsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjIyMzU2MCwiZXhwIjoyMDcxNzk5NTYwfQ.y4iezeRUKPqLnJzL6ZtEvTunR5hHzmiXgBvF39RD1yk"
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.warn("[v0] Supabase service environment variables not found. Using mock client.")
-    return createMockClient()
-  }
+  console.log("[v0] Service - Environment variables check:")
+  console.log(
+    "[v0] Service - NEXT_PUBLIC_SUPABASE_URL:",
+    process.env.NEXT_PUBLIC_SUPABASE_URL ? "✓ Found" : "✗ Missing",
+  )
+  console.log("[v0] Service - SUPABASE_URL:", process.env.SUPABASE_URL ? "✓ Found" : "✗ Missing")
+  console.log(
+    "[v0] Service - SUPABASE_SERVICE_ROLE_KEY:",
+    process.env.SUPABASE_SERVICE_ROLE_KEY ? "✓ Found" : "✗ Missing",
+  )
 
   console.log("[v0] Creating real service role Supabase client connection")
   return createSupabaseServerClient(supabaseUrl, serviceRoleKey, {

@@ -4,12 +4,8 @@ export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  console.log("[v0] Supabase URL:", supabaseUrl ? "✓ Found" : "✗ Missing")
-  console.log("[v0] Supabase Anon Key:", supabaseAnonKey ? "✓ Found" : "✗ Missing")
-
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn("[v0] Supabase environment variables not found. Using mock client.")
-    console.warn("[v0] Expected: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    console.warn("Supabase environment variables not found. Using mock client.")
 
     const createMockQueryBuilder = () => ({
       select: (columns?: string) => createMockQueryBuilder(),
@@ -80,6 +76,5 @@ export function createClient() {
     }
   }
 
-  console.log("[v0] Creating real Supabase client connection")
   return createBrowserClient(supabaseUrl, supabaseAnonKey)
 }
