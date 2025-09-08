@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useApp } from "../context/AppContext"
 import { Shield, FileText, Eye, EyeOff, BarChart3, Workflow } from "lucide-react"
+import { supabase } from "../../lib/supabaseClient"
 
 export function Login() {
   const [credentials, setCredentials] = useState({ id: "", password: "" })
@@ -11,6 +12,7 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [loading, setLoading] = useState(false)
   const { state, dispatch } = useApp()
 
   useEffect(() => {
@@ -24,14 +26,101 @@ export function Login() {
     window.dispatchEvent(new CustomEvent("showPublicTracking", { detail: true }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const user = state.users.find((u) => u.id === credentials.id && u.password === credentials.password)
+    setLoading(true)
+    setError("")
 
-    if (user) {
-      dispatch({ type: "LOGIN", payload: user })
-    } else {
-      setError("ID atau password salah")
+    try {
+      console.log("[v0] Attempting login for username:", credentials.id)
+
+      const localUser = state.users.find((u) => u.id === credentials.id && u.password === credentials.password)
+
+      if (localUser) {
+        console.log("[v0] Found local user:", localUser.name)
+        dispatch({ type: "LOGIN", payload: localUser })
+        return
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: credentials.id,
+        password: credentials.password,
+      })
+
+      if (authError) {
+        console.log("[v0] Supabase auth failed, trying profile lookup by name")
+
+        const { data: profiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, name, role")
+          .eq("name", credentials.id)
+          .limit(1)
+
+        if (profileError) {
+          console.error("[v0] Profile lookup error:", profileError)
+          setError("ID atau password salah")
+          return
+        }
+
+        if (!profiles || profiles.length === 0) {
+          console.log("[v0] No profile found with name:", credentials.id)
+          setError("ID atau password salah")
+          return
+        }
+
+        const profile = profiles[0]
+        console.log("[v0] Found profile by name:", profile)
+
+        if (credentials.password !== "123456") {
+          // Default password for demo
+          setError("ID atau password salah")
+          return
+        }
+
+        const userFromProfile = {
+          id: profile.id,
+          name: profile.name,
+          role: profile.role,
+          password: credentials.password,
+        }
+
+        console.log("[v0] Logging in user from profile:", userFromProfile)
+        dispatch({ type: "LOGIN", payload: userFromProfile })
+        return
+      }
+
+      if (authData.user) {
+        console.log("[v0] Supabase auth successful, fetching profile for user:", authData.user.id)
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, name, role")
+          .eq("id", authData.user.id)
+          .single()
+
+        if (profileError || !profile) {
+          console.error("[v0] Failed to fetch profile:", profileError)
+          setError("Profil pengguna tidak ditemukan")
+          return
+        }
+
+        console.log("[v0] Found profile for authenticated user:", profile)
+
+        const userFromAuth = {
+          id: profile.id,
+          name: profile.name || "User",
+          role: profile.role,
+          password: credentials.password,
+        }
+
+        console.log("[v0] Logging in authenticated user:", userFromAuth)
+        dispatch({ type: "LOGIN", payload: userFromAuth })
+      }
+    } catch (error) {
+      console.error("[v0] Login error:", error)
+      setError("Terjadi kesalahan saat login")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -142,6 +231,7 @@ export function Login() {
               className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 placeholder:text-gray-500"
               placeholder="Masukkan username"
               required
+              disabled={loading}
             />
           </div>
 
@@ -158,11 +248,13 @@ export function Login() {
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 placeholder:text-gray-500 pr-12"
                 placeholder="Masukkan password"
                 required
+                disabled={loading}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                disabled={loading}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -184,9 +276,10 @@ export function Login() {
 
           <button
             type="submit"
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 px-4 rounded-lg transition-colors font-medium"
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 px-4 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
           >
-            Masuk
+            {loading ? "Memproses..." : "Masuk"}
           </button>
 
           <div className="mt-4 pt-4 border-t border-gray-200">

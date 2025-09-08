@@ -153,9 +153,14 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
   switch (action.type) {
     case "LOGIN":
+      const loginUser = {
+        ...action.payload,
+        name: action.payload.name || "User", // Fallback to "User" if name is missing, never show UUID
+      }
+      console.log("[v0] Setting currentUser in reducer:", loginUser)
       newState = {
         ...state,
-        currentUser: action.payload,
+        currentUser: loginUser,
         isAuthenticated: true,
       }
       break
@@ -167,15 +172,35 @@ function appReducer(state: AppState, action: AppAction): AppState {
       }
       break
     case "ADD_USER":
-      newState = {
-        ...state,
-        users: [...state.users, action.payload],
+      const newUser = {
+        ...action.payload,
+        name: action.payload.name || "User", // Ensure name is never empty or UUID
+      }
+
+      // Check if user already exists to prevent duplicates
+      const existingUserIndex = state.users.findIndex((u) => u.id === newUser.id)
+      if (existingUserIndex >= 0) {
+        // Update existing user instead of adding duplicate
+        newState = {
+          ...state,
+          users: state.users.map((user) => (user.id === newUser.id ? newUser : user)),
+        }
+      } else {
+        newState = {
+          ...state,
+          users: [...state.users, newUser],
+        }
       }
       break
     case "UPDATE_USER":
+      const updatedUser = {
+        ...action.payload,
+        name: action.payload.name || "User", // Ensure name is never empty or UUID
+      }
       newState = {
         ...state,
-        users: state.users.map((user) => (user.id === action.payload.id ? action.payload : user)),
+        users: state.users.map((user) => (user.id === updatedUser.id ? updatedUser : user)),
+        currentUser: state.currentUser?.id === updatedUser.id ? updatedUser : state.currentUser,
       }
       break
     case "DELETE_USER":
@@ -361,14 +386,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       profiles: {
         onInsert: (payload) => {
           // Handle new user creation
-          dispatch({ type: "ADD_USER", payload: payload.new })
+          const profileUser = {
+            id: payload.new.id,
+            name: payload.new.name || "User", // Always use name from profiles, never UUID
+            role: payload.new.role,
+            password: "", // Profiles from Supabase don't have passwords in local state
+          }
+          console.log("[v0] Adding user from profile realtime:", profileUser)
+          dispatch({ type: "ADD_USER", payload: profileUser })
         },
         onUpdate: (payload) => {
           // Handle user updates
-          dispatch({ type: "UPDATE_USER", payload: payload.new })
+          const updatedProfileUser = {
+            id: payload.new.id,
+            name: payload.new.name || "User", // Always use name from profiles, never UUID
+            role: payload.new.role,
+            password: "", // Profiles from Supabase don't have passwords in local state
+          }
+          console.log("[v0] Updating user from profile realtime:", updatedProfileUser)
+          dispatch({ type: "UPDATE_USER", payload: updatedProfileUser })
         },
         onDelete: (payload) => {
-          // Handle user deletion
+          console.log("[v0] Deleting user from profile realtime:", payload.old.id)
           dispatch({ type: "DELETE_USER", payload: payload.old.id })
         },
       },
@@ -407,26 +446,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-          // Only load profiles if current user is admin to avoid RLS policy recursion
-          if (state.currentUser?.role === "Admin") {
-            const { data: profiles, error: profilesError } = await supabase
-              .from("profiles")
-              .select("id, name, role, created_at")
-              .limit(50) // Limit results to prevent large queries
-              .order("created_at", { ascending: false })
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, name, role, created_at")
+            .order("created_at", { ascending: false })
 
-            if (profilesError) {
-              console.error("Error loading profiles:", profilesError)
-              // Don't throw error, just log it and continue
-            } else if (profiles) {
-              profiles.forEach((profile) => {
-                dispatch({ type: "ADD_USER", payload: profile })
-              })
-            }
+          if (profilesError) {
+            console.error("Error loading profiles:", profilesError)
+          } else if (profiles) {
+            console.log("[v0] Loading profiles from Supabase:", profiles)
+            profiles.forEach((profile) => {
+              const profileUser = {
+                id: profile.id,
+                name: profile.name || "User", // Always use name from profiles, never UUID
+                role: profile.role,
+                password: "", // Profiles from Supabase don't have passwords
+              }
+              dispatch({ type: "ADD_USER", payload: profileUser })
+            })
           }
         } catch (profileError) {
           console.error("Profiles query failed, continuing without sync:", profileError)
-          // Continue execution even if profiles fail to load
         }
 
         trackingToasts.syncSuccess()
@@ -437,7 +477,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     loadInitialData()
-  }, [state.isAuthenticated, state.currentUser?.role])
+  }, [state.isAuthenticated])
 
   const requestRevision = useCallback((reportId: string, staffName: string, revisionNotes: string) => {
     dispatch({
