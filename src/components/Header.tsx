@@ -12,14 +12,15 @@ interface HeaderProps {
 
 export function Header({ userRole, userName, userTitle }: HeaderProps) {
   const [showLogoutMenu, setShowLogoutMenu] = useState(false)
-  const { dispatch } = useApp()
+  const { dispatch, state } = useApp()
 
   const handleLogout = () => {
     dispatch({ type: "LOGOUT" })
     setShowLogoutMenu(false)
   }
 
-  const safeUserName = userName || "User"
+  const currentUserName = state.currentUser?.name || userName || "User"
+  const safeUserName = currentUserName
   const safeUserRole = userRole || "Role"
   const displayTitle = safeUserRole
 

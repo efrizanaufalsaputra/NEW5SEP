@@ -34,67 +34,19 @@ export function Login() {
     try {
       console.log("[v0] Attempting login for username:", credentials.id)
 
-      const localUser = state.users.find((u) => u.id === credentials.id && u.password === credentials.password)
-
-      if (localUser) {
-        console.log("[v0] Found local user:", localUser.name)
-        dispatch({ type: "LOGIN", payload: localUser })
-        return
-      }
+      const emailFormat = credentials.id.includes("@") ? credentials.id : `${credentials.id}@sitrack.gov.id`
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: credentials.id,
+        email: emailFormat,
         password: credentials.password,
       })
 
-      if (authError) {
-        console.log("[v0] Supabase auth failed, trying profile lookup by name")
-
-        const { data: profiles, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, name, role")
-          .eq("name", credentials.id)
-          .limit(1)
-
-        if (profileError) {
-          console.error("[v0] Profile lookup error:", profileError)
-          setError("ID atau password salah")
-          return
-        }
-
-        if (!profiles || profiles.length === 0) {
-          console.log("[v0] No profile found with name:", credentials.id)
-          setError("ID atau password salah")
-          return
-        }
-
-        const profile = profiles[0]
-        console.log("[v0] Found profile by name:", profile)
-
-        if (credentials.password !== "123456") {
-          // Default password for demo
-          setError("ID atau password salah")
-          return
-        }
-
-        const userFromProfile = {
-          id: profile.id,
-          name: profile.name,
-          role: profile.role,
-          password: credentials.password,
-        }
-
-        console.log("[v0] Logging in user from profile:", userFromProfile)
-        dispatch({ type: "LOGIN", payload: userFromProfile })
-        return
-      }
-
-      if (authData.user) {
+      if (authData.user && !authError) {
         console.log("[v0] Supabase auth successful, fetching profile for user:", authData.user.id)
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("id, name, role")
+          .select("id, name, role, user_id")
           .eq("id", authData.user.id)
           .single()
 
@@ -107,15 +59,67 @@ export function Login() {
         console.log("[v0] Found profile for authenticated user:", profile)
 
         const userFromAuth = {
-          id: profile.id,
-          name: profile.name || "User",
+          id: profile.id, // Use Supabase UUID as id
+          name: profile.name || authData.user.email?.split("@")[0] || "User", // Use name from profile, fallback to email prefix, never UUID
           role: profile.role,
+          email: authData.user.email,
           password: credentials.password,
         }
 
         console.log("[v0] Logging in authenticated user:", userFromAuth)
         dispatch({ type: "LOGIN", payload: userFromAuth })
+        return
       }
+
+      console.log("[v0] Supabase auth failed, trying profile lookup by name")
+
+      const { data: profiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, name, role, user_id")
+        .eq("name", credentials.id)
+        .limit(1)
+
+      if (profileError) {
+        console.error("[v0] Profile lookup error:", profileError)
+        setError("ID atau password salah")
+        return
+      }
+
+      if (!profiles || profiles.length === 0) {
+        const localUser = state.users.find((u) => u.id === credentials.id && u.password === credentials.password)
+
+        if (localUser) {
+          console.log("[v0] Found local user:", localUser.name)
+          const userWithProperName = {
+            ...localUser,
+            name: localUser.name || "User", // Never show UUID even for local users
+          }
+          dispatch({ type: "LOGIN", payload: userWithProperName })
+          return
+        }
+
+        console.log("[v0] No profile found with name:", credentials.id)
+        setError("ID atau password salah")
+        return
+      }
+
+      const profile = profiles[0]
+      console.log("[v0] Found profile by name:", profile)
+
+      if (credentials.password !== "123456") {
+        setError("ID atau password salah")
+        return
+      }
+
+      const userFromProfile = {
+        id: profile.id, // Use Supabase UUID as id
+        name: profile.name || "User", // Use name from profile, never UUID
+        role: profile.role,
+        password: credentials.password,
+      }
+
+      console.log("[v0] Logging in user from profile:", userFromProfile)
+      dispatch({ type: "LOGIN", payload: userFromProfile })
     } catch (error) {
       console.error("[v0] Login error:", error)
       setError("Terjadi kesalahan saat login")

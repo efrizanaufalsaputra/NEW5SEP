@@ -155,7 +155,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "LOGIN":
       const loginUser = {
         ...action.payload,
-        name: action.payload.name || "User", // Fallback to "User" if name is missing, never show UUID
+        name: action.payload.name || action.payload.email?.split("@")[0] || "User", // Fallback to email prefix if name missing, never show UUID
       }
       console.log("[v0] Setting currentUser in reducer:", loginUser)
       newState = {
@@ -174,7 +174,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "ADD_USER":
       const newUser = {
         ...action.payload,
-        name: action.payload.name || "User", // Ensure name is never empty or UUID
+        name: action.payload.name || action.payload.email?.split("@")[0] || "User", // Never show UUID as name
       }
 
       // Check if user already exists to prevent duplicates
@@ -195,7 +195,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "UPDATE_USER":
       const updatedUser = {
         ...action.payload,
-        name: action.payload.name || "User", // Ensure name is never empty or UUID
+        name: action.payload.name || action.payload.email?.split("@")[0] || "User", // Never show UUID as name
       }
       newState = {
         ...state,
@@ -388,8 +388,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Handle new user creation
           const profileUser = {
             id: payload.new.id,
-            name: payload.new.name || "User", // Always use name from profiles, never UUID
+            name: payload.new.name || payload.new.email?.split("@")[0] || "User", // Always use name from profiles, never UUID
             role: payload.new.role,
+            email: payload.new.email,
             password: "", // Profiles from Supabase don't have passwords in local state
           }
           console.log("[v0] Adding user from profile realtime:", profileUser)
@@ -399,9 +400,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Handle user updates
           const updatedProfileUser = {
             id: payload.new.id,
-            name: payload.new.name || "User", // Always use name from profiles, never UUID
+            name: payload.new.name || payload.new.email?.split("@")[0] || "User", // Always use name from profiles, never UUID
             role: payload.new.role,
-            password: "", // Profiles from Supabase don't have passwords in local state
+            email: payload.new.email,
+            password: "", // Profiles from Supabase don't have passwords
           }
           console.log("[v0] Updating user from profile realtime:", updatedProfileUser)
           dispatch({ type: "UPDATE_USER", payload: updatedProfileUser })
@@ -448,7 +450,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           const { data: profiles, error: profilesError } = await supabase
             .from("profiles")
-            .select("id, name, role, created_at")
+            .select("id, name, role, created_at, user_id")
             .order("created_at", { ascending: false })
 
           if (profilesError) {
@@ -460,6 +462,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 id: profile.id,
                 name: profile.name || "User", // Always use name from profiles, never UUID
                 role: profile.role,
+                email: profile.user_id,
                 password: "", // Profiles from Supabase don't have passwords
               }
               dispatch({ type: "ADD_USER", payload: profileUser })
